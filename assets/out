@@ -1,0 +1,126 @@
+#!/bin/bash
+
+set +x
+
+SRC_DIR=$1
+
+# Make sure we are in the expected folder
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" > /dev/null && pwd )"
+cd $DIR
+
+PLATFORM=`uname`
+MD5_TOOL="md5sum"
+
+. ./deploy.sh
+
+echo "md5 Tool: $MD5_TOOL" 1>&2
+
+SCRIPT_INPUT='/tmp/input'
+cat > $SCRIPT_INPUT <&0 # STDIN params
+
+SERVERS=$(jq -r '.source.servers + [.source.server]|join(" ")'< $SCRIPT_INPUT)
+PORT=$(jq -r '.source.port // ""' < $SCRIPT_INPUT)
+REMOTE_DIR=$(jq -r '.source.remote_dir // ""' < $SCRIPT_INPUT)
+REMOTE_USER=$(jq -r '.source.remote_user // ""' < $SCRIPT_INPUT)
+RESTART_SERVICE=$(jq -r '.source.restart_service // ""' < $SCRIPT_INPUT)
+SYNC_DIR=$(jq -r '.params.sync_dir // ""' < $SCRIPT_INPUT)
+REPO_NAME=$(jq -r '.params.repo_name // ""' < $SCRIPT_INPUT)
+RSYNC_OPTS_ARR=$(jq -r '.params.rsync_opts // ""' < $SCRIPT_INPUT)
+
+if [ -z "$RSYNC_OPTS_ARR" ]
+then
+    RSYNC_OPTS="-Pav"
+else
+    RSYNC_OPTS=$(jq -r 'join(" ")' <<< $RSYNC_OPTS_ARR)
+fi
+
+## check if port is set in the configuration and
+## use default SSH port number 22 otherwise
+if [ -z "$PORT" ]; then
+    PORT=22
+fi
+
+echo "Servers: $SERVERS" 1>&2
+echo "Port: $PORT" 1>&2
+echo "Remote dir: $REMOTE_DIR" 1>&2
+echo "Remote user: $REMOTE_USER" 1>&2
+echo "Sync dir: $SYNC_DIR" 1>&2
+echo "Repository Name: $REPO_NAME" 1>&2
+
+mkdir -p ~/.ssh
+(jq -r '.source.private_key // empty' < $SCRIPT_INPUT) > ~/.ssh/server_key
+for SERVER in $SERVERS
+do
+    echo -e "Host $SERVER\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+done
+
+chmod -R 600 ~/.ssh
+
+eval $(ssh-agent) 1>&2 2>/dev/null
+SSH_ASKPASS=/opt/resource/askpass.sh DISPLAY= ssh-add ~/.ssh/server_key 1>&2 2>/dev/null
+
+VERSION_STRING="$BUILD_PIPELINE_NAME-$BUILD_ID"
+echo "Version string: $VERSION_STRING" 1>&2
+
+MD5_STRING=$(create_uniquish_repo $REPO_NAME)-$(echo $VERSION_STRING | $MD5_TOOL | cut -d ' ' -f 1)
+if [ $? -eq 0 ]; then
+    echo "MD5 Version string: $MD5_STRING" 1>&2
+
+    # Create the new directory for this build
+    DEST_DIR=$REMOTE_DIR/$MD5_STRING
+    echo "New remote dir: $DEST_DIR" 1>&2
+
+    REPORTED_VERSION=0
+    for SERVER in $SERVERS
+    do
+        CMD="ssh -i ~/.ssh/server_key -p $PORT $REMOTE_USER@$SERVER mkdir -p $DEST_DIR"
+        echo "Create remote dir: $CMD" 1>&2
+        eval $CMD 1>&2
+
+        if [ $? -eq 0 ]; then
+            RSYNC_CMD="rsync $RSYNC_OPTS -e 'ssh -i ~/.ssh/server_key -p $PORT' $SRC_DIR/$SYNC_DIR/ $REMOTE_USER@$SERVER:$DEST_DIR"
+            echo "Copy files using: $RSYNC_CMD" 1>&2
+
+            eval $RSYNC_CMD  1>&2
+            if [ $? -ne 0 ]; then
+                echo "Failed to rsync $SRC_DIR to $DEST_DIR" 1>&2
+                exit 1
+            fi
+
+            if [ $REPORTED_VERSION -eq 0 ]
+            then
+                OUTPUT_STRING="{ \"version\": { \"ref\": \"$MD5_STRING\"} }"
+                echo $OUTPUT_STRING
+                REPORTED_VERSION=1
+            fi
+
+            TMP_SCRIPT=$(create_deploy_script $REPO_NAME $REMOTE_DIR $MD5_STRING)
+
+            DEPLOY_CMD="ssh -i ~/.ssh/server_key -p $PORT $REMOTE_USER@$SERVER 'bash -s ' < $TMP_SCRIPT"
+            echo "Executing remote deploy script: $DEPLOY_CMD" 1>&2
+
+            eval $DEPLOY_CMD  1>&2
+            if [ $? -ne 0 ]; then
+                echo "Failed to deploy on server $SERVER" 1>&2
+                exit 1
+            fi
+
+            if [ "x$RESTART_SERVICE" != "x" ]; then
+                RESTART_PHP_CMD="ssh -i ~/.ssh/server_key -p $PORT $REMOTE_USER@$SERVER 'service $RESTART_SERVICE restart'"
+                echo "Restarting service '$RESTART_SERVICE'  ..." 1>&2
+
+                eval $RESTART_SERVICE_CMD  1>&2
+                if [ $? -ne 0 ]; then
+                    echo "Failed to restart $RESTART_SERVICE on $SERVER" 1>&2
+                    exit 1
+                fi
+            fi
+        else
+            echo "Failed to create destination $DEST_DIR" 1>&2
+            exit 1
+        fi
+    done
+else
+    echo "Failed to create MD5 hash" 1>&2
+    exit 1
+fi
