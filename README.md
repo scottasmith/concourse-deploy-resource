@@ -75,4 +75,4 @@ Rsync across artifacts from the input directory to the server and re-create a sy
 * `sync_dir`: *Optional.* Directory to be sync'd. If specified limit the directory to be sync'd to sync_dir. If not specified everything in the `put` will be sent (which could include container resources, whole build trees etc.)
 * `repo_name`: *Required* The symbolic link name to the generated direct name pushed onto remote server
 * `rsync_opts`: *Optional* Optional parameters to rsync
-* `restart_service`: *Optional* Give a service name to be restarted. ie. php deploys can restart the php-fpm/apache2 service
+* `post_run`: *Optional* Run cmd(s) after deployment. ie. php deploys can restart the php-fpm/apache2 service

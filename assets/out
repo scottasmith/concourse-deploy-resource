@@ -22,7 +22,7 @@ SERVERS=$(jq -r '.source.servers + [.source.server]|join(" ")'< $SCRIPT_INPUT)
 PORT=$(jq -r '.source.port // ""' < $SCRIPT_INPUT)
 REMOTE_DIR=$(jq -r '.source.remote_dir // ""' < $SCRIPT_INPUT)
 REMOTE_USER=$(jq -r '.source.remote_user // ""' < $SCRIPT_INPUT)
-RESTART_SERVICE=$(jq -r '.source.restart_service // ""' < $SCRIPT_INPUT)
+POST_CMD=$(jq -r '.source.post_cmd // ""' < $SCRIPT_INPUT)
 SYNC_DIR=$(jq -r '.params.sync_dir // ""' < $SCRIPT_INPUT)
 REPO_NAME=$(jq -r '.params.repo_name // ""' < $SCRIPT_INPUT)
 RSYNC_OPTS_ARR=$(jq -r '.params.rsync_opts // ""' < $SCRIPT_INPUT)
@@ -105,13 +105,13 @@ if [ $? -eq 0 ]; then
                 exit 1
             fi
 
-            if [ "x$RESTART_SERVICE" != "x" ]; then
-                RESTART_PHP_CMD="ssh -i ~/.ssh/server_key -p $PORT $REMOTE_USER@$SERVER 'service $RESTART_SERVICE restart'"
-                echo "Restarting service '$RESTART_SERVICE'  ..." 1>&2
+            if [ "x$POST_CMD" != "x" ]; then
+                POST_RUN_CMD="ssh -i ~/.ssh/server_key -p $PORT $REMOTE_USER@$SERVER '$POST_CMD'"
+                echo "Executing remote port_run script: $POST_RUN_CMD" 1>&2
 
-                eval $RESTART_SERVICE_CMD  1>&2
+                eval $POST_RUN_CMD  1>&2
                 if [ $? -ne 0 ]; then
-                    echo "Failed to restart $RESTART_SERVICE on $SERVER" 1>&2
+                    echo "Failed to execute port_run script $POST_CMD on $SERVER" 1>&2
                     exit 1
                 fi
             fi
