@@ -7,7 +7,7 @@ set +x
 function create_uniquish_repo {
 	local REPO_NAME=$1
 
-	echo $(_normalise_repo_name $REPO_NAME)-$(date +%Y-%m-%d_%H%M%S`)
+	echo $(_normalise_repo_name $REPO_NAME)-$(date +%Y-%m-%d_%H%M%S)
 }
 
 # Create deploy script for remote server, copy archive to it and execute script on remote
