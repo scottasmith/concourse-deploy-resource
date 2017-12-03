@@ -1,7 +1,7 @@
 # concourse-deploy-resource
 [concourse.ci](https://concourse.ci/ "concourse.ci Homepage") [resource](https://concourse.ci/implementing-resources.html "Implementing a resource") for persisting build artifacts on a remote server and activating directory using rsync and ssh.
 
-##Config
+## Config
 * `server|servers`: *Required* Server or list of servers on which to persist artifacts. If `servers` are used first one in the list will be used for `in` and `check` origins.
 * `port`: *Optional* Server SSH port, default is port 22
 * `remote_dir`: *Required* Directory to place artifacts on remote server(s)
@@ -11,7 +11,7 @@
 
 All config required for each of the `out` behavior.
 
-###Example
+### Example
 
 ``` yaml
 resource_types:
@@ -60,7 +60,7 @@ jobs:
           --chmod=Du=rwx,Dgo=rx,Fu=rw,Fog=r
 ```
 
-##Behavior
+## Behavior
 ### `check` : Check for new versions of artifacts
 Return an empty version
 
